@@ -1,0 +1,85 @@
+services:
+    # Project
+    app:
+        container_name: "${APP_NAME}_app"
+        environment:
+            APP_NAME: ${APP_NAME}
+            HOST_IP: ${HOST_IP}
+        build:
+            context: .
+            dockerfile: Dockerfile
+            args:
+              user: ${USER_NAME}
+              uid: ${USER_UID}
+        restart: unless-stopped
+        working_dir: /var/www/
+        ports:
+            - "${VITE_PORT}:${VITE_PORT}"
+            - "9003:9003"
+        volumes:
+            - .:/var/www
+        depends_on:
+            - redis
+        networks:
+            - laravel
+
+    # Nginx
+    nginx:
+        container_name: "${APP_NAME}_nginx"
+        environment:
+            APP_NAME: ${APP_NAME}
+        image: nginx:alpine
+        restart: unless-stopped
+        ports:
+            - "80:80"
+        volumes:
+            - ./:/var/www
+            - ./docker/nginx/:/etc/nginx/conf.d/
+        networks:
+            - laravel
+
+    # MySQL
+    db:
+        container_name: "${APP_NAME}_db"
+        image: mysql:8.0
+        platform: linux/x86_64
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: "${APP_NAME}_db"
+            MYSQL_ROOT_PASSWORD: root
+            APP_NAME: ${APP_NAME}
+        volumes:
+            - ./.docker/mysql/dbdata:/var/lib/mysql
+        ports:
+            - "3306:3306"
+        networks:
+            - laravel
+
+    # PHPMyAdmin
+    phpmyadmin:
+        container_name: "${APP_NAME}_phpMyAdmin"
+        image: phpmyadmin/phpmyadmin
+        platform: linux/x86_64
+        restart: unless-stopped
+        ports:
+            - "8080:80"
+        environment:
+            PMA_HOST: db
+            PMA_PORT: 3306
+            MYSQL_ROOT_PASSWORD: root
+            APP_NAME: ${APP_NAME}
+        networks:
+            - laravel
+
+    # Redis
+    redis:
+        container_name: "${APP_NAME}_redis"
+        environment:
+            APP_NAME: ${APP_NAME}
+        image: redis:latest
+        networks:
+            - laravel
+
+networks:
+    laravel:
+        driver: bridge
