@@ -15,7 +15,7 @@ services:
         working_dir: /var/www/
         ports:
             - "${VITE_PORT}:${VITE_PORT}"
-            - "9003:9003"
+            - "${XDEBUG_PORT}:${XDEBUG_PORT}"
         volumes:
             - .:/var/www
         depends_on:
@@ -31,52 +31,141 @@ services:
         image: nginx:alpine
         restart: unless-stopped
         ports:
-            - "80:80"
+            - "${NGINX_PORT}:${NGINX_PORT}"
         volumes:
             - ./:/var/www
             - ./docker/nginx/:/etc/nginx/conf.d/
         networks:
             - laravel
 
-    # MySQL
-    db:
-        container_name: "${APP_NAME}_db"
-        image: mysql:8.0
-        platform: linux/x86_64
-        restart: unless-stopped
+    # PostgreSQL
+    pgsql:
+        container_name: "${APP_NAME}_pgsql"
+        image: 'postgres:15'
+        ports:
+            - '${PGSQL_PORT}:{PGSQL_PORT}'
         environment:
-            MYSQL_DATABASE: "${APP_NAME}_db"
-            MYSQL_ROOT_PASSWORD: root
+            PGPASSWORD: '${DB_PASSWORD}'
+            POSTGRES_DB: '${DB_DATABASE}'
+            POSTGRES_USER: '${DB_USERNAME}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD}'
             APP_NAME: ${APP_NAME}
         volumes:
-            - ./.docker/mysql/dbdata:/var/lib/mysql
-        ports:
-            - "3306:3306"
+            - '.docker/${APP_NAME}_pgsql:/var/lib/postgresql/data'
+        healthcheck:
+            test:
+                - CMD
+                - pg_isready
+                - '-q'
+                - '-d'
+                - '${DB_DATABASE}'
+                - '-U'
+                - '${DB_USERNAME}'
+            retries: 3
+            timeout: 5s
         networks:
             - laravel
 
-    # PHPMyAdmin
-    phpmyadmin:
-        container_name: "${APP_NAME}_phpMyAdmin"
-        image: phpmyadmin/phpmyadmin
-        platform: linux/x86_64
-        restart: unless-stopped
+    # MySQL
+    mysql:
+        container_name: "${APP_NAME}_mysql"
+        image: 'mysql/mysql-server:8.0'
         ports:
-            - "8080:80"
+            - '${MYSQL_PORT}:${MYSQL_PORT}'
         environment:
-            PMA_HOST: db
-            PMA_PORT: 3306
-            MYSQL_ROOT_PASSWORD: root
+            MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
+            MYSQL_ROOT_HOST: "%"
+            MYSQL_DATABASE: '${DB_DATABASE}'
+            MYSQL_USER: '${DB_USERNAME}'
+            MYSQL_PASSWORD: '${DB_PASSWORD}'
+            MYSQL_ALLOW_EMPTY_PASSWORD: 1
             APP_NAME: ${APP_NAME}
+        volumes:
+            - '.docker/${APP_NAME}_mysql:/var/lib/mysql'
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-p${DB_PASSWORD}"]
+            retries: 3
+            timeout: 5s
         networks:
             - laravel
 
     # Redis
     redis:
         container_name: "${APP_NAME}_redis"
+        image: 'redis:alpine'
         environment:
             APP_NAME: ${APP_NAME}
-        image: redis:latest
+        ports:
+            - '${REDIS_PORT}:${REDIS_PORT}'
+        volumes:
+            - '.docker/${APP_NAME}_redis:/data'
+        healthcheck:
+            test:
+                - CMD
+                - redis-cli
+                - ping
+            retries: 3
+            timeout: 5s
+        networks:
+            - laravel
+    
+    # Meilisearch
+    meilisearch:
+        container_name: "${APP_NAME}_meilisearch"
+        image: 'getmeili/meilisearch:latest'
+        ports:
+            - '${MEILISEARCH_PORT}:${MEILISEARCH_PORT}'
+        environment:
+            MEILI_NO_ANALYTICS: '${MEILISEARCH_NO_ANALYTICS}'
+            APP_NAME: ${APP_NAME}
+        volumes:
+            - '.docker/${APP_NAME}_meilisearch:/meili_data'
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - '--no-verbose'
+                - '--spider'
+                - 'http://127.0.0.1:7700/health'
+            retries: 3
+            timeout: 5s
+        networks:
+            - laravel
+
+    # MinIO
+    minio:
+        container_name: "${APP_NAME}_minio"
+        image: 'minio/minio:latest'
+        ports:
+            - '${MINIO_PORT}:${MINIO_PORT}'
+            - '${MINIO_CONSOLE_PORT}:${MINIO_CONSOLE_PORT}'
+        environment:
+            MINIO_ROOT_USER: minioadmin
+            MINIO_ROOT_PASSWORD: minioadmin
+            APP_NAME: ${APP_NAME}
+        volumes:
+            - '.docker/${APP_NAME}_minio:/data/minio'
+        command: 'minio server /data/minio --console-address ":${MINIO_CONSOLE_PORT}"'
+        healthcheck:
+            test:
+                - CMD
+                - mc
+                - ready
+                - local
+            retries: 3
+            timeout: 5s
+        networks:
+            - laravel
+
+    # Mailpit
+    mailpit:
+        container_name: "${APP_NAME}_mailpit"
+        image: 'axllent/mailpit:latest'
+        environment:
+            APP_NAME: ${APP_NAME}
+        ports:
+            - '${MAILPIT_PORT:-1025}:${MAILPIT_PORT}'
+            - '${MAILPIT_DASHBOARD_PORT}:${MAILPIT_DASHBOARD_PORT}'
         networks:
             - laravel
 
