@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     zip \
-    unzip
+    unzip \
+    nginx
 
 # Install Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -46,4 +47,13 @@ WORKDIR /var/www
 COPY docker/php/custom.ini /usr/local/etc/php/conf.d/custom.ini
 COPY docker/php/xdebug.ini /usr/local/etc/php/conf.d/xdebug.ini
 
+# Copy custom configurations Nginx
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+
+RUN chown -R www-data:www-data /var/www
+
+EXPOSE 80
+
 USER $user
+
+CMD service nginx start && php-fpm
